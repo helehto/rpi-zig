@@ -16,6 +16,22 @@ _start:
 
 4:	bl	kernelMain
 
+.global __switch_to_el1
+__switch_to_el1:
+	msr	SPSR_EL2, x0
+
+	// Jump to .dest with EL1 on eret.
+	ldr	x0, =.dest
+	msr	ELR_EL2, x0
+
+	// Re-use the current stack pointer.
+	mov	x0, sp
+	msr	SP_EL1, x0
+
+	eret
+.dest:
+	ret
+
 .global __delay
 __delay:
 1:	sub	w0, w0, #1

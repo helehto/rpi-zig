@@ -5,6 +5,9 @@ const pl011 = @import("pl011.zig");
 const mailbox = @import("mailbox.zig");
 const gpio = @import("gpio.zig");
 const log = @import("log.zig");
+const arm = @import("arm.zig");
+
+extern fn __switch_to_el1(spsr_el1: u32) void;
 
 pub fn panic(msg: []const u8, error_return_trace: ?*std.builtin.StackTrace) noreturn {
     _ = error_return_trace;
@@ -42,6 +45,29 @@ export fn kernelMain(dtb_ptr32: u64) callconv(.C) noreturn {
         // Redirect all logs there.
         log.setSerialConsoleDevice(&uart_dev);
         log.puts("Serial console enabled.\r\n");
+    }
+
+    // Some things in Zig's standard library use floating-point (e.g. memcpy
+    // using q registers); make sure we don't trap these in EL1.
+    arm.msr("CPACR_EL1", 0b11 << 20);
+
+    const el = arm.currentEL();
+    log.println("Current exception level is {d}.", .{ el });
+    if (el == 2) {
+        // We don't particularly care about running as a hypervisor (EL2).
+        // Switch to EL1, but keep all interrupts masked until we install an
+        // exception vector table.
+        var spsr: u32 = 0;
+        spsr |= 1 << 9; // Mask EL1 watchpoints and breakpoint exceptions
+        spsr |= 1 << 8; // Mask EL1 SError interrupts
+        spsr |= 1 << 7; // Mask EL1 IRQs
+        spsr |= 1 << 6; // Mask EL1 FIQs
+        spsr |= 0b01 << 2; // Move to EL1
+        spsr |= 1; // Use SP_EL1 as sp
+        log.puts("Switching to EL1.\r\n");
+        __switch_to_el1(spsr);
+
+        log.println("New exception level is {d}.", .{ arm.currentEL() });
     }
 
     log.puts("Entering infinite loop.\r\n");
