@@ -6,13 +6,15 @@ const mailbox = @import("mailbox.zig");
 const gpio = @import("gpio.zig");
 const log = @import("log.zig");
 const arm = @import("arm.zig");
+const interrupt = @import("interrupt.zig");
+const panic_ = @import("panic.zig");
 
 extern fn __switch_to_el1(spsr_el1: u32) void;
 
 pub fn panic(msg: []const u8, error_return_trace: ?*std.builtin.StackTrace) noreturn {
     _ = error_return_trace;
     log.println("PANIC (0x{x}): {s}", .{ @returnAddress(), msg });
-    while (true) {}
+    panic_.hang();
 }
 
 export fn kernelMain(dtb_ptr32: u64) callconv(.C) noreturn {
@@ -70,7 +72,11 @@ export fn kernelMain(dtb_ptr32: u64) callconv(.C) noreturn {
         log.println("New exception level is {d}.", .{ arm.currentEL() });
     }
 
+    interrupt.init();
+
+    // Test interrupt handling...
+    asm volatile ("svc #0x80");
+
     log.puts("Entering infinite loop.\r\n");
-    while (true)
-        asm volatile ("wfe");
+    panic_.hang();
 }

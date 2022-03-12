@@ -13,6 +13,7 @@ pub fn build(b: *std.build.Builder) !void {
     elf.setTarget(try CrossTarget.parse(target));
     elf.setBuildMode(mode);
     elf.addAssemblyFile("boot.S");
+    elf.addAssemblyFile("interrupt.S");
     elf.addObjectFile("kernel.zig");
     elf.setLinkerScriptPath(.{ .path = "link.ld" });
     elf.link_function_sections = true;
