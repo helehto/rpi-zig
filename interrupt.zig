@@ -2,7 +2,19 @@ const arm = @import("arm.zig");
 const log = @import("log.zig");
 const panic = @import("panic.zig").panic;
 
+pub const IrqHandler = struct {
+    handler: ?fn(context: *anyopaque) void = null,
+    context: *anyopaque = undefined,
+};
+
+pub const IrqHandlers = struct {
+    handlers: [64]IrqHandler,
+};
+
 extern var __vector_table_el1: u8;
+var irq_handlers = IrqHandlers{
+    .handlers = [_]IrqHandler{IrqHandler{}} ** 64,
+};
 
 const ExceptionFrame = packed struct {
     x30: u64,
@@ -88,6 +100,15 @@ export fn handleLowerElAarch32Fiq(frame: *ExceptionFrame) callconv(.C) void {
 export fn handleLowerElAarch32Serror(frame: *ExceptionFrame) callconv(.C) void {
     _ = frame;
     panic(@src().fn_name ++ " not implemented yet!");
+}
+
+pub fn installIrqHandler(line: u6, handler: fn(context: *anyopaque) void, context: *anyopaque) void {
+    const h = &irq_handlers.handlers[line];
+
+    if (h.handler != null)
+        panic("Attempted to overwrite existing IRQ handler!");
+    h.handler = handler;
+    h.context = context;
 }
 
 pub fn init() void {
