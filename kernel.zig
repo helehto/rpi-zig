@@ -57,7 +57,7 @@ export fn kernelMain(dtb_ptr32: u64) callconv(.C) noreturn {
     arm.msr("CPACR_EL1", 0b11 << 20);
 
     const el = arm.currentEL();
-    log.println("Current exception level is {d}.", .{ el });
+    log.println("Current exception level is {d}.", .{el});
     if (el == 2) {
         // We don't particularly care about running as a hypervisor (EL2).
         // Switch to EL1, but keep all interrupts masked until we install an
@@ -72,7 +72,7 @@ export fn kernelMain(dtb_ptr32: u64) callconv(.C) noreturn {
         log.puts("Switching to EL1.\r\n");
         __switch_to_el1(spsr);
 
-        log.println("New exception level is {d}.", .{ arm.currentEL() });
+        log.println("New exception level is {d}.", .{arm.currentEL()});
     }
 
     // TODO: Don't hard-code stuff, walk the device tree instead.

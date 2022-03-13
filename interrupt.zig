@@ -4,7 +4,7 @@ const log = @import("log.zig");
 const panic = @import("panic.zig").panic;
 
 pub const IrqHandler = struct {
-    handler: ?fn(context: *anyopaque) void = null,
+    handler: ?fn (context: *anyopaque) void = null,
     context: *anyopaque = undefined,
 };
 
@@ -20,7 +20,7 @@ var irq_handlers = IrqHandlers{
 
 const ExceptionFrame = packed struct {
     x30: u64,
-    gpr: [30]u64,  // x30 and x31 not included
+    gpr: [30]u64, // x30 and x31 not included
     fpr: [32]u128,
 };
 
@@ -48,15 +48,15 @@ export fn handleCurrElSpxSync(frame: *ExceptionFrame) callconv(.C) void {
     _ = frame;
 
     const esr = @truncate(u32, arm.mrs("ESR_EL1"));
-    log.println("  ESR_EL1 = 0b{b:0>24}", .{ esr });
-    log.println("    ISS is 0b{b:0>24}", .{ esr & 0xffffff });
-    log.println("    EC is 0b{b:0>6}", .{ esr >> 26 });
+    log.println("  ESR_EL1 = 0b{b:0>24}", .{esr});
+    log.println("    ISS is 0b{b:0>24}", .{esr & 0xffffff});
+    log.println("    EC is 0b{b:0>6}", .{esr >> 26});
 
     const elr = @truncate(u32, arm.mrs("ELR_EL1"));
-    log.println("  ELR_EL1 is 0x{x:0>16}", .{ elr });
+    log.println("  ELR_EL1 is 0x{x:0>16}", .{elr});
 
     const fault_addr = @truncate(u32, arm.mrs("FAR_EL1"));
-    log.println("  FAR_EL1 is 0x{x:0>16}", .{ fault_addr });
+    log.println("  FAR_EL1 is 0x{x:0>16}", .{fault_addr});
 
     panic("Unexpected synchronous exception!");
 }
@@ -65,7 +65,7 @@ export fn handleCurrElSpxIrq(frame: *ExceptionFrame) callconv(.C) void {
     _ = frame;
 
     const pending = controller.getPendingIrqMask();
-    log.println("In IRQ handler; pending = 0x{x:0>16}", .{ pending });
+    log.println("In IRQ handler; pending = 0x{x:0>16}", .{pending});
 
     var remaining_irqs = pending;
     while (remaining_irqs != 0) {
@@ -129,7 +129,7 @@ export fn handleLowerElAarch32Serror(frame: *ExceptionFrame) callconv(.C) void {
     panic(@src().fn_name ++ " not implemented yet!");
 }
 
-pub fn installIrqHandler(line: u6, handler: fn(context: *anyopaque) void, context: *anyopaque) void {
+pub fn installIrqHandler(line: u6, handler: fn (context: *anyopaque) void, context: *anyopaque) void {
     const h = &irq_handlers.handlers[line];
 
     if (h.handler != null)
