@@ -72,8 +72,12 @@ export fn handleCurrElSpxIrq(frame: *ExceptionFrame) callconv(.C) void {
         const irq = @truncate(u6, @ctz(u64, remaining_irqs));
 
         const h = &irq_handlers.handlers[irq];
-        if (h.handler) |handler|
+        if (h.handler) |handler| {
             handler(h.context);
+        } else {
+            log.println("warning: unimplemented IRQ {d}", .{irq});
+        }
+
 
         remaining_irqs &= ~(@as(u64, 1) << irq);
     }
