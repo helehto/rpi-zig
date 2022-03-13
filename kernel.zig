@@ -8,6 +8,8 @@ const log = @import("log.zig");
 const arm = @import("arm.zig");
 const interrupt = @import("interrupt.zig");
 const panic_ = @import("panic.zig");
+const system_timer = @import("system_timer.zig");
+const intc = @import("intc.zig");
 
 extern fn __switch_to_el1(spsr_el2: u32) void;
 extern fn __change_el1(spsr_el1: u32) void;
@@ -73,10 +75,33 @@ export fn kernelMain(dtb_ptr32: u64) callconv(.C) noreturn {
         log.println("New exception level is {d}.", .{ arm.currentEL() });
     }
 
-    interrupt.init();
+    // TODO: Don't hard-code stuff, walk the device tree instead.
+    const st_node = dt.getNodeByPath("/soc/timer@7e003000") orelse unreachable;
+    const intc_node = dt.getNodeByPath("/soc/interrupt-controller@7e00b200") orelse unreachable;
+    var st_dev = system_timer.SystemTimer.probe(st_node.*) catch unreachable;
+    var intc_dev = intc.Intc.probe(intc_node.*) catch unreachable;
 
-    // Test interrupt handling...
-    asm volatile ("svc #0x80");
+    interrupt.init(&intc_dev);
+
+    st_dev.installIrqHandlers();
+
+    {
+        // Enable IRQs and FIQs.
+        var spsr: u32 = 0;
+        spsr |= 1 << 9; // Mask EL1 watchpoints and breakpoint exceptions
+        spsr |= 1 << 8; // Mask EL1 SError interrupts
+        spsr |= 0 << 7; // Unmask EL1 IRQs
+        spsr |= 0 << 6; // Unmask EL1 FIQs
+        spsr |= 0b01 << 2; // Move to EL1
+        spsr |= 1; // Use SP_EL1 as sp
+        log.println("Enabling IRQs and FIQs.", .{});
+        __change_el1(spsr);
+    }
+
+    // Test system timer and IRQs:
+    st_dev.writeReg(.C1, 0x20000);
+    st_dev.writeReg(.C3, 0x200000);
+    intc_dev.enableIrqs(0, 1 << 1 | 1 << 3);
 
     log.puts("Entering infinite loop.\r\n");
     panic_.hang();

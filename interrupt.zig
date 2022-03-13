@@ -1,4 +1,5 @@
 const arm = @import("arm.zig");
+const intc = @import("intc.zig");
 const log = @import("log.zig");
 const panic = @import("panic.zig").panic;
 
@@ -12,6 +13,7 @@ pub const IrqHandlers = struct {
 };
 
 extern var __vector_table_el1: u8;
+var controller: *const intc.Intc = undefined;
 var irq_handlers = IrqHandlers{
     .handlers = [_]IrqHandler{IrqHandler{}} ** 64,
 };
@@ -44,12 +46,37 @@ export fn handleCurrElSp0Serror(frame: *ExceptionFrame) callconv(.C) void {
 
 export fn handleCurrElSpxSync(frame: *ExceptionFrame) callconv(.C) void {
     _ = frame;
-    log.puts("Hi from exception handler " ++ @src().fn_name ++ "!\r\n");
+
+    const esr = @truncate(u32, arm.mrs("ESR_EL1"));
+    log.println("  ESR_EL1 = 0b{b:0>24}", .{ esr });
+    log.println("    ISS is 0b{b:0>24}", .{ esr & 0xffffff });
+    log.println("    EC is 0b{b:0>6}", .{ esr >> 26 });
+
+    const elr = @truncate(u32, arm.mrs("ELR_EL1"));
+    log.println("  ELR_EL1 is 0x{x:0>16}", .{ elr });
+
+    const fault_addr = @truncate(u32, arm.mrs("FAR_EL1"));
+    log.println("  FAR_EL1 is 0x{x:0>16}", .{ fault_addr });
+
+    panic("Unexpected synchronous exception!");
 }
 
 export fn handleCurrElSpxIrq(frame: *ExceptionFrame) callconv(.C) void {
     _ = frame;
-    panic(@src().fn_name ++ " not implemented yet!");
+
+    const pending = controller.getPendingIrqMask();
+    log.println("In IRQ handler; pending = 0x{x:0>16}", .{ pending });
+
+    var remaining_irqs = pending;
+    while (remaining_irqs != 0) {
+        const irq = @truncate(u6, @ctz(u64, remaining_irqs));
+
+        const h = &irq_handlers.handlers[irq];
+        if (h.handler) |handler|
+            handler(h.context);
+
+        remaining_irqs &= ~(@as(u64, 1) << irq);
+    }
 }
 
 export fn handleCurrElSpxFiq(frame: *ExceptionFrame) callconv(.C) void {
@@ -111,6 +138,7 @@ pub fn installIrqHandler(line: u6, handler: fn(context: *anyopaque) void, contex
     h.context = context;
 }
 
-pub fn init() void {
+pub fn init(_controller: *const intc.Intc) void {
     arm.msr("VBAR_EL1", @ptrToInt(&__vector_table_el1));
+    controller = _controller;
 }
