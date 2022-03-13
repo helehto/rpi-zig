@@ -1,3 +1,4 @@
+const device = @import("device.zig");
 const dtb = @import("dtb.zig");
 const interrupt = @import("interrupt.zig");
 const log = @import("log.zig");
@@ -26,35 +27,23 @@ pub const CSBit = enum(u32) {
 pub const SystemTimer = struct {
     const Self = @This();
 
-    base: [2]u32,
-
-    fn regPtr(self: Self, reg: Reg) *volatile u32 {
-        return @intToPtr(*volatile u32, self.base[0] + @enumToInt(reg));
-    }
-
-    pub fn writeReg(self: Self, reg: Reg, value: u32) void {
-        self.regPtr(reg).* = value;
-    }
-
-    fn readReg(self: Self, reg: Reg) u32 {
-        return self.regPtr(reg).*;
-    }
+    dev: device.MMIOPeripheralDevice(Reg),
 
     pub fn readStatus(self: Self) u4 {
-        return @truncate(u4, self.readReg(.CS));
+        return @truncate(u4, self.dev.readReg(.CS));
     }
 
     pub fn readCounter(self: Self) u64 {
-        const lo = self.readReg(.CLO);
-        const hi = self.readReg(.CHI);
+        const lo = self.dev.readReg(.CLO);
+        const hi = self.dev.readReg(.CHI);
         return @as(u64, hi) << 32 | lo;
     }
 
     pub fn doHandleIrq(self: *Self) void {
         _ = self;
-        const cs = self.readReg(.CS);
-        log.println("Tick! CS = 0x{x}", .{ cs });
-        self.writeReg(.CS, cs);
+        const cs = self.dev.readReg(.CS);
+        log.println("Tick! CS = 0x{x}", .{cs});
+        self.dev.writeReg(.CS, cs);
     }
 
     pub fn handleIrq(context: *anyopaque) void {
@@ -69,14 +58,6 @@ pub const SystemTimer = struct {
     }
 
     pub fn probe(node: dtb.Node) !Self {
-        var self = Self{
-            .base = undefined,
-        };
-
-        _ = try node.getU32ArrayProp("reg", self.base[0..]);
-        self.base[0] = @truncate(u32, try node.translateAddress(self.base[0]));
-
-        return self;
+        return Self{ .dev = try device.MMIOPeripheralDevice(Reg).init(node) };
     }
 };
-

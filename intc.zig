@@ -1,3 +1,4 @@
+const device = @import("device.zig");
 const dtb = @import("dtb.zig");
 const log = @import("log.zig");
 
@@ -40,40 +41,30 @@ pub const Peripheral = enum(u6) {
 pub const Intc = struct {
     const Self = @This();
 
-    base: [2]u32,
-
-    fn regPtr(self: Self, reg: Reg) *volatile u32 {
-        return @intToPtr(*volatile u32, self.base[0] + @enumToInt(reg));
-    }
-
-    fn writeReg(self: Self, reg: Reg, value: u32) void {
-        self.regPtr(reg).* = value;
-    }
-
-    fn readReg(self: Self, reg: Reg) u32 {
-        return self.regPtr(reg).*;
-    }
+    dev: device.MMIOPeripheralDevice(Reg),
 
     pub fn enableIrqs(self: Self, reg_num: u1, mask: u32) void {
         const reg: Reg = if (reg_num == 0) .enable_irqs_1 else .enable_irqs_2;
-        self.writeReg(reg, mask);
+        self.dev.writeReg(reg, mask);
     }
 
     pub noinline fn getPendingIrqMask(self: Self) u64 {
-        const pending = self.readReg(.irq_basic_pending);
-        const lo = if (pending & (1 << 8) != 0) self.readReg(.irq_pending_1) else 0;
-        const hi = if (pending & (1 << 9) != 0) self.readReg(.irq_pending_2) else 0;
+        const pending = self.dev.readReg(.irq_basic_pending);
+
+        const lo = if (pending & (1 << 8) != 0)
+            self.dev.readReg(.irq_pending_1)
+        else
+            0;
+
+        const hi = if (pending & (1 << 9) != 0)
+            self.dev.readReg(.irq_pending_2)
+        else
+            0;
+
         return @as(u64, hi) << 32 | lo;
     }
 
     pub fn probe(node: dtb.Node) !Self {
-        var self = Self{
-            .base = undefined,
-        };
-
-        _ = try node.getU32ArrayProp("reg", self.base[0..]);
-        self.base[0] = @truncate(u32, try node.translateAddress(self.base[0]));
-
-        return self;
+        return Self{ .dev = try device.MMIOPeripheralDevice(Reg).init(node) };
     }
 };

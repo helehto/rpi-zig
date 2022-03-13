@@ -5,6 +5,7 @@
 // https://github.com/raspberrypi/firmware/wiki/Accessing-mailboxes
 // https://github.com/raspberrypi/firmware/wiki/Mailbox-property-interface
 
+const device = @import("device.zig");
 const dtb = @import("dtb.zig");
 const log = @import("log.zig");
 
@@ -30,36 +31,24 @@ const STATUS_FULL_BIT = 1 << 31;
 pub const Mailbox = struct {
     const Self = @This();
 
-    base: [2]u32,
-
-    fn regPtr(self: Self, reg: Reg) *volatile u32 {
-        return @intToPtr(*volatile u32, self.base[0] + @enumToInt(reg));
-    }
-
-    fn writeReg(self: Self, reg: Reg, value: u32) void {
-        self.regPtr(reg).* = value;
-    }
-
-    fn readReg(self: Self, reg: Reg) u32 {
-        return self.regPtr(reg).*;
-    }
+    dev: device.MMIOPeripheralDevice(Reg),
 
     fn send(self: Self, channel: u4, buffer: []u32) void {
         const ptr = (@truncate(u32, @ptrToInt(&buffer[0])) & 0xFFFFFFF0) | channel;
 
         // Wait until the ARM -> VC mailbox is non-full, then write to it.
-        while (self.readReg(.WSTATUS) & STATUS_FULL_BIT != 0) {}
-        self.writeReg(.WRITE, ptr);
+        while (self.dev.readReg(.WSTATUS) & STATUS_FULL_BIT != 0) {}
+        self.dev.writeReg(.WRITE, ptr);
 
         while (true) {
             // Wait for a response.
-            if (self.readReg(.RSTATUS) & STATUS_EMPTY_BIT != 0)
+            if (self.dev.readReg(.RSTATUS) & STATUS_EMPTY_BIT != 0)
                 continue;
 
             // TODO: This logic discards responses for other requests in flight
             // if they happen to arrive first. Can this actually happen in
             // hardware?
-            if (self.readReg(.READ) == ptr)
+            if (self.dev.readReg(.READ) == ptr)
                 break;
         }
     }
@@ -81,13 +70,6 @@ pub const Mailbox = struct {
     }
 
     pub fn probe(node: dtb.Node) !Self {
-        var self = Self{
-            .base = undefined,
-        };
-
-        _ = try node.getU32ArrayProp("reg", self.base[0..]);
-        self.base[0] = @truncate(u32, try node.translateAddress(self.base[0]));
-
-        return self;
+        return Self{ .dev = try device.MMIOPeripheralDevice(Reg).init(node) };
     }
 };

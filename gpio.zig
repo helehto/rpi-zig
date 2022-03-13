@@ -1,3 +1,4 @@
+const device = @import("device.zig");
 const dtb = @import("dtb.zig");
 const log = @import("log.zig");
 
@@ -44,26 +45,14 @@ pub const PUD = enum(u2) {
 pub const GPIO = struct {
     const Self = @This();
 
-    base: [2]u32,
-
-    fn regPtr(self: Self, reg: Reg) *volatile u32 {
-        return @intToPtr(*volatile u32, self.base[0] + @enumToInt(reg));
-    }
-
-    fn writeReg(self: Self, reg: Reg, value: u32) void {
-        self.regPtr(reg).* = value;
-    }
-
-    fn readReg(self: Self, reg: Reg) u32 {
-        return self.regPtr(reg).*;
-    }
+    dev: device.MMIOPeripheralDevice(Reg),
 
     pub fn controlPull(self: Self, reg: Reg, control: PUD, mask: u32) void {
         // Per the BCM2835 ARM Peripherals manual:
 
         // "1. Write to GPPUD to set the required control signal (i.e. Pull-up
         // or Pull-Down or neither to remove the current Pull-up/down)"
-        self.writeReg(.GPPUD, @enumToInt(control));
+        self.dev.writeReg(.GPPUD, @enumToInt(control));
 
         // "2. Wait 150 cycles – this provides the required set-up time for the
         // control signal"
@@ -72,27 +61,20 @@ pub const GPIO = struct {
         // "3. Write to GPPUDCLK0/1 to clock the control signal into the GPIO
         // pads you wish to modify – NOTE only the pads which receive a clock
         // will be modified, all others will retain their previous state"
-        self.writeReg(reg, mask);
+        self.dev.writeReg(reg, mask);
 
         // "4. Wait 150 cycles – this provides the required hold time for the
         // control signal"
         __delay(150);
 
         // "5. Write to GPPUD to remove the control signal"
-        self.writeReg(.GPPUD, 0);
+        self.dev.writeReg(.GPPUD, 0);
 
         // "6. Write to GPPUDCLK0/1 to remove the clock"
-        self.writeReg(reg, 0);
+        self.dev.writeReg(reg, 0);
     }
 
     pub fn probe(node: dtb.Node) !Self {
-        var self = Self{
-            .base = undefined,
-        };
-
-        _ = try node.getU32ArrayProp("reg", self.base[0..]);
-        self.base[0] = @truncate(u32, try node.translateAddress(self.base[0]));
-
-        return self;
+        return Self{ .dev = try device.MMIOPeripheralDevice(Reg).init(node) };
     }
 };

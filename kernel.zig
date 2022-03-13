@@ -99,8 +99,8 @@ export fn kernelMain(dtb_ptr32: u64) callconv(.C) noreturn {
     }
 
     // Test system timer and IRQs:
-    st_dev.writeReg(.C1, 0x20000);
-    st_dev.writeReg(.C3, 0x200000);
+    st_dev.dev.writeReg(.C1, 0x20000);
+    st_dev.dev.writeReg(.C3, 0x200000);
     intc_dev.enableIrqs(0, 1 << 1 | 1 << 3);
 
     log.puts("Entering infinite loop.\r\n");

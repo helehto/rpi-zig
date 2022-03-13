@@ -1,6 +1,7 @@
 // PrimeCell UART (PL011) Technical Reference Manual:
 // https://developer.arm.com/documentation/ddi0183/f/
 
+const device = @import("device.zig");
 const dtb = @import("dtb.zig");
 const log = @import("log.zig");
 
@@ -72,67 +73,52 @@ const CR_CTSEn = 1 << 15;
 pub const pl011 = struct {
     const Self = @This();
 
-    base: [2]u32,
-
-    fn regPtr(self: Self, reg: Reg) *volatile u32 {
-        return @intToPtr(*volatile u32, self.base[0] + @enumToInt(reg));
-    }
-
-    fn writeReg(self: Self, reg: Reg, value: u32) void {
-        self.regPtr(reg).* = value;
-    }
-
-    fn readReg(self: Self, reg: Reg) u32 {
-        return self.regPtr(reg).*;
-    }
+    dev: device.MMIOPeripheralDevice(Reg),
 
     fn setBaudRate(self: Self, clock: u32, baud: u32) void {
         const divider = @divFloor(clock, 16 * baud);
         const fract = @divFloor(64 * clock, 16 * baud) - 64 * divider;
-        self.writeReg(.IBRD, divider);
-        self.writeReg(.FBRD, fract);
+        self.dev.writeReg(.IBRD, divider);
+        self.dev.writeReg(.FBRD, fract);
     }
 
     pub fn enable(self: Self, clock: u32, baud: u32) void {
         self.setBaudRate(clock, baud);
 
         // Enable FIFO and 8 bit data transmission (1 stop bit, no parity).
-        self.writeReg(.LCR_H, LCR_H_FEN | (0b11 << 5));
+        self.dev.writeReg(.LCR_H, LCR_H_FEN | (0b11 << 5));
 
         // Mask all interrupts.
-        self.writeReg(.IMSC, (1 << 10) - 1);
+        self.dev.writeReg(.IMSC, (1 << 10) - 1);
 
         // Enable UART, transmit and receive.
-        self.writeReg(.CR, CR_UARTEN | CR_TXE | CR_RXE);
+        self.dev.writeReg(.CR, CR_UARTEN | CR_TXE | CR_RXE);
     }
 
     /// Blocking read of a single character.
     pub fn read(self: Self) u8 {
         // Wait until there is data in the receive FIFO.
-        while ((self.readReg(.FR) & FR_RXFE) != 0) {}
-        return self.readReg(.DR);
+        while ((self.dev.readReg(.FR) & FR_RXFE) != 0) {}
+        return self.dev.readReg(.DR);
     }
 
     /// Blocking write of a single character.
     pub fn write(self: Self, c: u8) void {
         // Wait until there is space in the transmit FIFO.
-        while ((self.readReg(.FR) & FR_TXFF) != 0) {}
-        self.writeReg(.DR, c);
+        while ((self.dev.readReg(.FR) & FR_TXFF) != 0) {}
+        self.dev.writeReg(.DR, c);
     }
 
     pub fn probe(node: dtb.Node) !Self {
-        var self = Self{
-            .base = undefined,
+        const self = Self{
+            .dev = try device.MMIOPeripheralDevice(Reg).init(node)
         };
 
-        _ = try node.getU32ArrayProp("reg", self.base[0..]);
-        self.base[0] = @truncate(u32, try node.translateAddress(self.base[0]));
-
         // Disable everything.
-        self.writeReg(.CR, 0x00000000);
+        self.dev.writeReg(.CR, 0x00000000);
 
         // Clear all pending interrupts.
-        self.writeReg(.ICR, 0x7FF);
+        self.dev.writeReg(.ICR, 0x7FF);
 
         return self;
     }
