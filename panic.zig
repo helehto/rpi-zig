@@ -2,7 +2,7 @@ const log = @import("log.zig");
 
 pub inline fn hang() noreturn {
     while (true)
-        asm volatile ("wfe");
+        asm volatile ("wfi");
 }
 
 pub fn panic(comptime msg: []const u8) noreturn {
