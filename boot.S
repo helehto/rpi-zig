@@ -20,8 +20,8 @@ _start:
 __switch_to_el1:
 	msr	SPSR_EL2, x0
 
-	// Jump to .dest with EL1 on eret.
-	ldr	x0, =.dest
+	// Jump to .__switch_to_el1_dest with EL1 on eret.
+	ldr	x0, =.__switch_to_el1_dest
 	msr	ELR_EL2, x0
 
 	// Re-use the current stack pointer.
@@ -29,7 +29,19 @@ __switch_to_el1:
 	msr	SP_EL1, x0
 
 	eret
-.dest:
+.__switch_to_el1_dest:
+	ret
+
+.global __change_el1
+__change_el1:
+	msr	SPSR_EL1, x0
+
+	// Jump to .__change_el1_dest with EL1 on eret.
+	ldr	x0, =.__change_el1_dest
+	msr	ELR_EL1, x0
+
+	eret
+.__change_el1_dest:
 	ret
 
 .global __delay

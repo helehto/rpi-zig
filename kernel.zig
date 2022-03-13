@@ -9,7 +9,8 @@ const arm = @import("arm.zig");
 const interrupt = @import("interrupt.zig");
 const panic_ = @import("panic.zig");
 
-extern fn __switch_to_el1(spsr_el1: u32) void;
+extern fn __switch_to_el1(spsr_el2: u32) void;
+extern fn __change_el1(spsr_el1: u32) void;
 
 pub fn panic(msg: []const u8, error_return_trace: ?*std.builtin.StackTrace) noreturn {
     _ = error_return_trace;
