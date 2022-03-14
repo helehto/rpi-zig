@@ -4,8 +4,14 @@ const log = @import("log.zig");
 const panic = @import("panic.zig").panic;
 
 pub const IrqHandler = struct {
-    handler: ?fn (context: *anyopaque) void = null,
-    context: *anyopaque = undefined,
+    pub const Context = struct {
+        // @fieldParentPtr doesn't work with zero-sized types, hence this
+        // field. See: https://github.com/ziglang/zig/issues/4599
+        dummy: u1 = 0,
+    };
+
+    handler: ?fn (context: *Context) void = null,
+    context: *Context = undefined,
 };
 
 pub const IrqHandlers = struct {
@@ -133,7 +139,7 @@ export fn handleLowerElAarch32Serror(frame: *ExceptionFrame) callconv(.C) void {
     panic(@src().fn_name ++ " not implemented yet!");
 }
 
-pub fn installIrqHandler(line: u6, handler: fn (context: *anyopaque) void, context: *anyopaque) void {
+pub fn installIrqHandler(line: u6, handler: fn (context: *IrqHandler.Context) void, context: *IrqHandler.Context) void {
     const h = &irq_handlers.handlers[line];
 
     if (h.handler != null)

@@ -28,6 +28,7 @@ pub const SystemTimer = struct {
     const Self = @This();
 
     dev: device.MMIOPeripheralDevice(Reg),
+    irq_context: interrupt.IrqHandler.Context = .{},
 
     pub fn readStatus(self: Self) u4 {
         return @truncate(u4, self.dev.readReg(.CS));
@@ -39,22 +40,17 @@ pub const SystemTimer = struct {
         return @as(u64, hi) << 32 | lo;
     }
 
-    pub fn doHandleIrq(self: *Self) void {
-        _ = self;
+    pub fn handleIrq(context: *interrupt.IrqHandler.Context) void {
+        const self = @fieldParentPtr(Self, "irq_context", context);
         const cs = self.dev.readReg(.CS);
         log.println("Tick! CS = 0x{x}", .{cs});
         self.dev.writeReg(.CS, cs);
     }
 
-    pub fn handleIrq(context: *anyopaque) void {
-        const self = @ptrCast(*Self, @alignCast(@alignOf(Self), context));
-        return SystemTimer.doHandleIrq(self);
-    }
-
     pub fn installIrqHandlers(self: *Self) void {
         var irq: u6 = 0;
         while (irq < 4) : (irq += 1)
-            interrupt.installIrqHandler(irq, SystemTimer.handleIrq, self);
+            interrupt.installIrqHandler(irq, SystemTimer.handleIrq, &self.irq_context);
     }
 
     pub fn probe(node: dtb.Node) !Self {
