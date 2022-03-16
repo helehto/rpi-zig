@@ -11,9 +11,6 @@ const panic_ = @import("panic.zig");
 const system_timer = @import("system_timer.zig");
 const intc = @import("intc.zig");
 
-extern fn __switch_to_el1(spsr_el2: u32) void;
-extern fn __change_el1(spsr_el1: u32) void;
-
 pub fn panic(msg: []const u8, error_return_trace: ?*std.builtin.StackTrace) noreturn {
     _ = error_return_trace;
     log.println("PANIC (0x{x}): {s}", .{ @returnAddress(), msg });
@@ -52,29 +49,6 @@ export fn kernelMain(dtb_ptr32: u64) callconv(.C) noreturn {
         log.puts("Serial console enabled.\r\n");
     }
 
-    // Some things in Zig's standard library use floating-point (e.g. memcpy
-    // using q registers); make sure we don't trap these in EL1.
-    arm.msr("CPACR_EL1", 0b11 << 20);
-
-    const el = arm.currentEL();
-    log.println("Current exception level is {d}.", .{el});
-    if (el == 2) {
-        // We don't particularly care about running as a hypervisor (EL2).
-        // Switch to EL1, but keep all interrupts masked until we install an
-        // exception vector table.
-        var spsr: u32 = 0;
-        spsr |= 1 << 9; // Mask EL1 watchpoints and breakpoint exceptions
-        spsr |= 1 << 8; // Mask EL1 SError interrupts
-        spsr |= 1 << 7; // Mask EL1 IRQs
-        spsr |= 1 << 6; // Mask EL1 FIQs
-        spsr |= 0b01 << 2; // Move to EL1
-        spsr |= 1; // Use SP_EL1 as sp
-        log.puts("Switching to EL1.\r\n");
-        __switch_to_el1(spsr);
-
-        log.println("New exception level is {d}.", .{arm.currentEL()});
-    }
-
     // TODO: Don't hard-code stuff, walk the device tree instead.
     const st_node = dt.getNodeByPath("/soc/timer@7e003000") orelse unreachable;
     const intc_node = dt.getNodeByPath("/soc/interrupt-controller@7e00b200") orelse unreachable;
@@ -85,18 +59,8 @@ export fn kernelMain(dtb_ptr32: u64) callconv(.C) noreturn {
 
     st_dev.installIrqHandlers();
 
-    {
-        // Enable IRQs and FIQs.
-        var spsr: u32 = 0;
-        spsr |= 1 << 9; // Mask EL1 watchpoints and breakpoint exceptions
-        spsr |= 1 << 8; // Mask EL1 SError interrupts
-        spsr |= 0 << 7; // Unmask EL1 IRQs
-        spsr |= 0 << 6; // Unmask EL1 FIQs
-        spsr |= 0b01 << 2; // Move to EL1
-        spsr |= 1; // Use SP_EL1 as sp
-        log.println("Enabling IRQs and FIQs.", .{});
-        __change_el1(spsr);
-    }
+    // Enable IRQs and FIQs.
+    arm.msr("DAIF", 0b0011_0000_0000);
 
     // Test system timer and IRQs:
     st_dev.dev.writeReg(.C1, 0x20000);
