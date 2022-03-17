@@ -57,8 +57,6 @@ _start:
 	mov	x0, #(0b11 << 20)
 	msr	CPACR_EL1, x0
 
-	ldr	x2, =4f
-
 	mov	x0, x29
 4:	bl	kernelMain
 
